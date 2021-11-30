@@ -1,0 +1,820 @@
+Turtles-own [mon elc pelc ph pg pc ps pr pw pn pf]                         ; mon = money, elc = electricity, ph = price of heat, pg = price of gas, pc = price of crude
+mss-own [heat gas crd slp rpd wtr npk fpd]                                 ; ps = price of sulphur, pr = price of refinery products, pw = price of water, pn = price of npk
+mbs-own [heat gas crd slp rpd wtr npk fpd de dh dg dc ds dr dw dn df]      ; pf = price of fertiliser products, crd = crude, rpd = refinery product, fpd = fertiliser product, df = fertiliser demand
+rfs-own [heat gas crd slp rpd dh dc de]                                    ; de = electricity demand, ds = sulphur demand, slp = sulpher, eff = effluent, dg = gas demand, dh = heat demand
+pps-own [heat gas wtr dg dw]                                               ; wtr = water, dc = crude demand, npk = fertiliser raw material, dr = demand for refinery products, dw = water demand
+fps-own [slp npk fpd eff ds dn de]                                         ; dn = npk demand
+
+breed [mss ms]                                                             ; mss = market selling agents (black)
+breed [mbs mb]                                                             ; mbs = market buying agents (orange)
+breed [rfs rf]                                                             ; rfs = refineries (blue)
+breed [pps pp]                                                             ; pps = powerplants (green)
+breed [fps fp]                                                             ; fps = fertiliser plants (red)
+
+to setup
+  clear-all                                                                ; reset field
+  ask patches [set pcolor gray]                                            ; set background color
+  setup-breeds                                                             ; create agents
+  display-labels                                                           ; show amount of money of each agent
+  reset-ticks                                                              ; initialise time
+end
+
+to go
+  if ticks = 365 * number-of-years [stop]                                  ; setting for contract length
+  setup-demand                                                             ; buyers fix requirements
+  setup-prices                                                             ; sellers fix prices
+  purchase-inputs                                                          ; industrial agents buy input requirements
+  produce-outputs                                                          ; industrial agents produce
+  sell-products                                                            ; all sellers sell products
+  pay-fines                                                                ; industrial agents pay fines for waste released into the environment
+  display-labels                                                           ; show each industrial agent's cash balance
+  tick                                                                     ; time + 1 period
+end
+
+to setup-demand
+  ask mbs [set de (random-normal 150 10) set dh (random-normal 5000 100) set dg (random-normal 4000 50)
+    set dc (random-normal 50000 1000) set ds (random-normal 50000 100) set dr (random-normal 400000 10000)
+    set dw (random-normal 100000 160) set dn (random-normal 50000 300) set df (random-normal 40000 300)]
+  ask rf 3 [set dh (random-normal (0.27 * 0.0625 * (sum [dr] of mbs)) 100) set dc (random-normal (0.27 * 1.25 * (sum [dr] of mbs)) 10000)
+    set de (random-normal (0.27 * 0.00125 * (sum [dr] of mbs)) 100)]
+  ask rf 4 [set dh (random-normal (0.27 * 0.0567 * (sum [dr] of mbs)) 100) set dc (random-normal (0.27 * 1.35 * (sum [dr] of mbs)) 10000)                    ; all buyers' demand set on a gaussian-normal distribution with a mean deamand value and variance
+    set de (random-normal (0.27 * 0.00141 * (sum [dr] of mbs)) 100)]                                                                                         ; industrial agents input requiremnts based on market buyers products demand
+  ask rf 5 [set dh (random-normal (0.27 * 0.0633 * (sum [dr] of mbs)) 100) set dc (random-normal (0.27 * 1.41 * (sum [dr] of mbs)) 10000)
+    set de (random-normal (0.27 * 0.0013 * (sum [dr] of mbs)) 100)]
+  ask pp 7 [set dg (random-normal (8.88 * 2000) 50) set dw (random-normal (1.11 * 2000) 500)]
+  ask pp 6 [set dg (random-normal (8.33 * 1500) 50) set dw (random-normal (16.67 * 1500) 500)]
+  ask fps [set ds (random-normal (0.8 * (sum [df] of mbs) / 3 * 0.03) 100) set dn (random-normal (0.8 * (sum [df] of mbs) / 3 * 1.25) 300)
+    set de (random-normal (0.8 * (sum [df] of mbs) / 3 * 0.005) 50)]
+end
+
+to setup-prices
+  ask mss [set pelc (random-normal (inflationary-factor * 200) 0.5) set ph (random-normal (inflationary-factor * 1) 0.05)
+    set pg (random-normal (inflationary-factor * 5) 0.02)                                                                                                   ; market selling agents set prices based on a gaussian-normal distribution with a mean value and variance
+    set pc (random-normal (inflationary-factor * 10) 0.3) set ps (random-normal (inflationary-factor * 0.5) 0.01)
+    set pr (random-normal (inflationary-factor * 20) 1)
+    set pw (random-normal (inflationary-factor * 0.2) 0.001) set pn (random-normal (inflationary-factor * 20) 1.01)
+    set pf (random-normal (inflationary-factor * 100) 2)]
+  ask rf 3 [set pg (((sum [pg] of mss) / 3) - random 0.5001) set ps (((sum [ps] of mss) / 3) - random 0.05)                                                 ; industrial agents set product prices based on average market prices
+    set pr (((sum [pr] of mss) / 3) - random 5.005)]
+  ask rf 4 [set pg (((sum [pg] of mss) / 3) - random 0.5001) set ps (((sum [ps] of mss) / 3) - random 0.05)
+    set pr (((sum [pr] of mss) / 3) - random 5.005)]
+  ask rf 5 [set pg (((sum [pg] of mss) / 3) - random 0.5001) set ps (((sum [ps] of mss) / 3) - random 0.05)
+    set pr (((sum [pr] of mss) / 3) - random 5.005)]
+  ask pp 6 [set pelc (((sum [pelc] of mss) / 3) - random 5.005) set ph (((sum [ph] of mss) / 3) - random 0.025)]
+  ask pp 7 [set pelc (((sum [pelc] of mss) / 3) - random 5.005) set ph (((sum [ph] of mss) / 3) - random 0.025)]
+  ask fps [set pf (((sum [pf] of mss) / 3) - random 8)]
+end
+
+to purchase-inputs
+  if [crd] of rf 3 < [dc] of rf 3 [ask min-one-of mss [pc + 0] [set crd (crd - [dc] of rf 3)
+    set mon (mon + [dc] of rf 3 * pc)]]
+  ask rf 3 [(if crd < dc [set crd (crd + dc) set mon (mon - (dc * [pc] of min-one-of mss [pc + 0])) set dc 0])]
+  if [crd] of rf 5 < [dc] of rf 5 [ask min-one-of mss [pc + 0] [set crd (crd - [dc] of rf 5)
+    set mon (mon + [dc] of rf 5 * pc)]]
+  ask rf 5 [(if crd < dc [set crd (crd + dc) set mon (mon - (dc * [pc] of min-one-of mss [pc + 0])) set dc 0])]
+  if [crd] of rf 4 < [dc] of rf 4 [ask min-one-of mss [pc + 0] [set crd (crd - [dc] of rf 4)
+    set mon (mon + [dc] of rf 4 * pc)]]                                                                                                             ; industrial agents purchase inputs not available within the EIP from market selling agents
+  ask rf 4 [(if crd < dc [set crd (crd + dc) set mon (mon - (dc * [pc] of min-one-of mss [pc + 0])) set dc 0])]
+  if [wtr] of pp 6 < [dw] of pp 6 [ask min-one-of mss [pw + 0] [set wtr (wtr - [dw] of pp 6)
+    set mon (mon + [dw] of pp 6 * pw)]]
+  ask pp 6 [(if wtr < dw [set wtr (wtr + dw) set mon (mon - dw * [pw] of min-one-of mss [pw + 0]) set dw 0])]
+  if [wtr] of pp 7 < [dw] of pp 7 [ask min-one-of mss [pw + 0] [set wtr (wtr - [dw] of pp 7)
+    set mon (mon + [dw] of pp 7 * pw)]]
+  ask pp 7 [(if wtr < dw [set wtr (wtr + dw) set mon (mon - dw * [pw] of min-one-of mss [pw + 0]) set dw 0])]
+  if [npk] of fp 8 < [dn] of fp 8 [ask min-one-of mss [pn + 0] [set npk (npk - [dn] of fp 8)
+    set mon (mon + [dn] of fp 8 * pn)]]
+  ask fp 8 [(if npk < dn [set npk (npk + dn) set mon (mon - dn * [pn] of min-one-of mss [pn + 0]) set dn 0])]
+  ask fp 9 [(if npk < dn [set npk (npk + dn) set mon (mon - dn * [pn] of min-one-of mss [pn + 0]) set dn 0])]
+  ask fp 10 [(if npk < dn [set npk (npk + dn) set mon (mon - dn * [pn] of min-one-of mss [pn + 0]) set dn 0])]
+end
+
+
+to produce-outputs
+  if random 101 < reliability-ref-1 [ask rf 3 [set gas (gas + (0.02 * dc)) set slp (slp + (0.0044 * dc)) set rpd (rpd + (0.8 * dc))
+    set elc (elc - 0.001 * dc) set heat (heat - 0.05 * dc) set crd (crd - dc)]]
+  if random 101 < reliability-ref-2 [ask rf 4 [set gas (gas + (0.03 * dc)) set slp (slp + (0.0029 * dc)) set rpd (rpd + (0.74 * dc))
+    set elc (elc - 0.00104 * dc) set heat (heat - 0.042 * dc) set crd (crd - dc)]]
+  if random 101 < reliability-ref-3 [ask rf 5 [set gas (gas + (0.035 * dc)) set slp (slp + (0.0035 * dc)) set rpd (rpd + (0.71 * dc))              ; industrial agents produce only when factory is not down on maintenance which is dependent on
+    set elc (elc - 0.000922 * dc) set heat (heat - 0.056 * dc) set crd (crd - dc)]]                                                                ; the factories' reliability factor
+  if random 101 < reliability-pp-1 [ask pp 6 [set elc (elc + (0.113 * dg)) set heat (heat + (4.693 * dg)) set gas (gas - dg)
+    set wtr (wtr - 1.251 * dg)]]
+  if random 101 < reliability-pp-2 [ask pp 7 [set elc (elc + (0.120 * dg)) set heat (heat + (3.333 * dg)) set gas (gas - dg)
+    set wtr (wtr - 2.001 * dg)]]
+  if random 101 < reliability-fplants [ask fps [set fpd (fpd + (0.8 * dn)) set eff (eff + (0.01 * dn)) set elc (elc - 0.004 * dn)
+    set npk (npk - dn) set slp (slp - 0.024 * dn)]]
+
+  ifelse model-version = "contracts" [if [elc] of pp 7 < ([de] of rf 3 + [de] of rf 5 + [de] of fp 8) [
+    ask pp 7 [set mon (mon - (([elc] of pp 6 - ([de] of rf 4 + [de] of fp 9 + [de] of fp 10)) * [pelc] of pp 6))]
+    ask pp 6 [set mon (mon + (([elc] of pp 6 - ([elc] of rf 4 + [elc] of fp 9 + [de] of fp 10)) * pelc))]
+    ask pp 7 [set elc (elc + ([elc] of pp 6 - ([de] of rf 4 + [de] of fp 9 + [de] of fp 10)))]
+    ask pp 6 [set elc (elc - (elc - ([de] of rf 4 + [de] of fp 9 + [de] of fp 10)))]]
+  if [elc] of pp 7 < ([de] of rf 3 + [de] of rf 5 + [de] of fp 8) [
+    ask pp 7 [set mon (mon - ((([de] of rf 3 + [de] of rf 5 + [de] of fp 8) - elc) * [pelc] of min-one-of mss [pelc + 0]))]                         ; industrial agents purchase all required inputs available in the EIP from EIP agents before looking out
+    ask min-one-of mss [pelc + 0] [set mon (mon + ((([de] of rf 3 + [de] of rf 5 + [de] of fp 8) - [elc] of pp 7) * pelc))]                         ; to the market selling agents
+    ask pp 7 [set elc (elc + (([de] of rf 3 + [de] of rf 5 + [de] of fp 8) - elc))]                                                                 ; with contracts, only EIP agents in contractual agreement trade directly
+    ask min-one-of mss [pelc + 0] [set elc (elc - (([de] of rf 3 + [de] of rf 5 + [de] of fp 8) - [elc] of pp 7))]]                                 ; without contracts, transactions within the EIP is based on the best price (least price)
+
+  if [heat] of pp 7 < ([dh] of rf 3 + [dh] of rf 5) [
+    ask pp 7 [set mon (mon - (([heat] of pp 6 - ([dh] of rf 4)) * [ph] of pp 6))]
+    ask pp 6 [set mon (mon + ((heat - ([dh] of rf 4)) * ph))]
+    ask pp 7 [set heat (heat + ([heat] of pp 6 - ([dh] of rf 4)))]
+    ask pp 6 [set heat (heat - (heat - ([dh] of rf 4)))]]
+  if [heat] of pp 7 < ([dh] of rf 3 + [dh] of rf 5) [
+    ask pp 7 [set mon (mon - ((([dh] of rf 3 + [dh] of rf 5) - heat) * [ph] of  min-one-of mss [ph + 0]))]
+    ask  min-one-of mss [ph + 0] [set mon (mon + ((([dh] of rf 3 + [dh] of rf 5) - [heat] of pp 7) * ph))]
+    ask pp 7 [set heat (heat + (([dh] of rf 3 + [dh] of rf 5) - heat))]
+    ask  min-one-of mss [ph + 0] [set heat (heat - (([dh] of rf 3 + [dh] of rf 5) - [heat] of pp 7))]]
+
+
+  if [elc] of rf 3 < [de] of rf 3 [ask pp 7 [set elc (elc - [de] of rf 3) set mon (mon + [de] of rf 3 * pelc)]]
+  if [heat] of rf 3 < [dh] of rf 3 [ask pp 7[set heat (heat - [dh] of rf 3) set mon (mon + [dh] of rf 3 * ph)]]
+  ask rf 3 [(if elc < de [set elc (elc + de) set mon (mon - (de * [pelc] of pp 7)) set de 0])
+    (if heat < dh [set heat (heat + dh) set mon (mon - (dh * [ph] of pp 7)) set dh 0])]
+
+
+  if [elc] of rf 5 < [de] of rf 5 [ask pp 7 [set elc (elc - [de] of rf 5) set mon (mon + [de] of rf 5 * pelc)]]
+  if [heat] of rf 5 < [dh] of rf 5 [ask pp 7 [set heat (heat - [dh] of rf 5) set mon (mon + [dh] of rf 5 * ph)]]
+  ask rf 5 [(if elc < de [set elc (elc + de) set mon (mon - (de * [pelc] of pp 7)) set de 0])
+    (if heat < dh [set heat (heat + dh) set mon (mon - (dh * [ph] of pp 7)) set dh 0])]
+
+
+  if [elc] of pp 6 < ([de] of rf 4 + [de] of fp 9 + [de] of fp 10) [
+    ask pp 6 [set mon (mon - (([elc] of pp 7 - ([de] of rf 3 + [de] of rf 5 + [de] of fp 8)) * [pelc] of pp 7))]
+    ask pp 7 [set mon (mon + ((elc - ([de] of rf 3 + [de] of rf 5 + [de] of fp 8)) * pelc))]
+    ask pp 6 [set elc (elc + ([elc] of pp 7 - ([de] of rf 3 + [de] of rf 5 + [de] of fp 8)))]
+    ask pp 7 [set elc (elc - (elc - ([de] of rf 3 + [de] of rf 5 + [de] of fp 8)))]]
+  if [elc] of pp 6 < ([de] of rf 4 + [de] of fp 9 + [de] of fp 10) [
+    ask pp 6[set mon (mon - ((([de] of rf 4 + [de] of fp 9 + [de] of fp 10) - elc) * [pelc] of min-one-of mss [pelc + 0]))]
+    ask min-one-of mss [pc + 0] [set mon (mon + ((([de] of rf 4 + [de] of fp 9 + [de] of fp 10) - [elc] of pp 6) * pelc))]
+    ask pp 6 [set elc (elc + (([de] of rf 4 + [de] of fp 9 + [de] of fp 10) - elc))]
+    ask min-one-of mss [pelc + 0] [set elc (elc - (([de] of rf 4 + [de] of fp 9 + [de] of fp 10) - [elc] of pp 6))]]
+
+  if [heat] of pp 6 < ([dh] of rf 4) [
+    ask pp 6 [set mon (mon - (([heat] of pp 7 - ([dh] of rf 3 + [dh] of rf 5)) * [ph] of pp 7))]
+    ask pp 7 [set mon (mon + ((heat - ([dh] of rf 3 + [dh] of rf 5)) * ph))]
+    ask pp 6 [set heat (heat + ([heat] of pp 7 - ([dh] of rf 3 + [dh] of rf 5)))]
+    ask pp 7 [set heat (heat - (heat - ([dh] of rf 3 + [dh] of rf 5)))]]
+  if [heat] of pp 6 < ([dh] of rf 4) [
+    ask pp 6 [set mon (mon - ((([dh] of rf 4) - heat) * [ph] of  min-one-of mss [ph + 0]))]
+    ask  min-one-of mss [ph + 0] [set mon (mon + ((([dh] of rf 4) - [heat] of pp 6) * ph))]
+    ask pp 6 [set heat (heat + (([dh] of rf 4) - heat))]
+    ask  min-one-of mss [ph + 0] [set heat (heat - (([dh] of rf 4) - [heat] of pp 6))]]
+
+  if [elc] of rf 4 < [de] of rf 4 [ask pp 6 [set elc (elc - [de] of rf 4) set mon (mon + [de] of rf 4 * pelc)]]
+  if [heat] of rf 4 < [dh] of rf 4 [ask pp 6 [set heat (heat - [dh] of rf 4) set mon (mon + [dh] of rf 4 * ph)]]
+  ask rf 4 [(if elc < de [set elc (elc + de) set mon (mon - (de * [pelc] of pp 6)) set de 0])
+    (if heat < dh [set heat (heat + dh) set mon (mon - (dh * [ph] of pp 6)) set dh 0])]
+
+
+  if [gas] of rf 4 < ([dg] of pp 6) and [gas] of rf 5 > ([dg] of pp 6) [
+    ask rf 4 [set mon (mon - ([dg] of pp 6 * [pg] of rf 5))]
+    ask rf 5 [set mon (mon + ([dg] of pp 6 * pg))]
+    ask rf 4 [set gas (gas + [dg] of pp 6)]
+    ask rf 5 [set gas (gas - [dg] of pp 6)]]
+  if [gas] of rf 4 < ([dg] of pp 6) [
+    ask rf 4 [set mon (mon - (([dg] of pp 6 - gas) * [pg] of min-one-of mss [pg + 0]))]
+    ask min-one-of mss [pg + 0] [set mon (mon + (([dg] of pp 6 - [gas] of rf 4) * pg))]
+    ask rf 4 [set gas (gas + ([dg] of pp 6 - gas))]
+    ask min-one-of mss [pg + 0] [set gas (gas - ([dg] of pp 6 - [gas] of rf 4))]]
+
+  if [gas] of pp 6 < [dg] of pp 6 [ask rf 4 [set gas (gas - [dg] of pp 6) set mon (mon + [dg] of pp 6 * pg)]]
+  ask pp 6 [(if gas < dg [set gas (gas + dg) set mon (mon - dg * [pg] of rf 4) set dg 0])]
+
+
+  if [gas] of rf 3 < ([dg] of pp 7) and [gas] of rf 5 > ([dg] of pp 7) [
+    ask rf 3 [set mon (mon - ([dg] of pp 7 * [pg] of rf 5))]
+    ask rf 5 [set mon (mon + ([dg] of pp 7 * pg))]
+    ask rf 3 [set gas(gas + [dg] of pp 7)]
+    ask rf 5 [set gas (gas - [dg] of pp 7)]]
+  if [gas] of rf 3 < ([dg] of pp 7) [
+    ask rf 3 [set mon (mon - (([dg] of pp 7 - gas) * [pg] of min-one-of mss [pg + 0]))]
+    ask min-one-of mss [pg + 0] [set mon (mon + (([dg] of pp 7 - [gas] of rf 3) * pg))]
+    ask rf 3 [set gas (gas + ([dg] of pp 7 - gas))]
+    ask min-one-of mss [pg + 0] [set gas (gas - ([dg] of pp 7 - [gas] of rf 3))]]
+
+  if [gas] of pp 7 < [dg] of pp 7 [ask rf 3 [set gas (gas - [dg] of pp 7) set mon (mon + [dg] of pp 7 * pg)]]
+  ask pp 7 [(if gas < dg [set gas (gas + dg) set mon (mon - dg * [pg] of rf 3) set dg 0])]
+
+
+  if [slp] of rf 3 < [ds] of fp 8 [ask min-one-of mss [ps + 0] [set slp (slp - [ds] of fp 8)
+    set mon (mon + [ds] of fp 8 * ps)]]
+  ask rf 3 [if slp < [ds] of fp 8 [set slp (slp + [ds] of fp 8) set mon (mon - [ds] of fp 8 * [ps] of min-one-of mss [ps + 0])]]
+
+  if [slp] of fp 8 < [ds] of fp 8 [ask rf 3 [set slp (slp - [ds] of fp 8) set mon (mon + [ds] of fp 8 * ps)]]
+  if [elc] of fp 8 < [de] of fp 8 [ask pp 7 [set elc (elc - [de] of fp 8) set mon (mon + [de] of fp 8 * pelc)]]
+  ask fp 8 [(if slp < ds [set slp (slp + ds) set mon (mon - ds * [ps] of rf 3) set ds 0])
+    (if elc < de [set elc (elc + de) set mon (mon - de * [pelc] of pp 7) set de 0])]
+
+
+  if [slp] of rf 4 < [ds] of fp 9 [ask min-one-of mss [ps + 0] [set slp (slp - [ds] of fp 9)
+    set mon (mon + [ds] of fp 9 * ps)]]
+  ask rf 4 [if slp < [ds] of fp 9 [set slp (slp + [ds] of fp 9) set mon (mon - [ds] of fp 9 * [ps] of min-one-of mss [ps + 0])]]
+
+  if [slp] of fp 9 < [ds] of fp 9 [ask rf 4 [set slp (slp - [ds] of fp 9) set mon (mon + [ds] of fp 9 * ps)]]
+  if [elc] of fp 9 < [de] of fp 9 [ask pp 6 [set elc (elc - [de] of fp 9) set mon (mon + [de] of fp 9 * pelc)]]
+  ask fp 9 [(if slp < ds [set slp (slp + ds) set mon (mon - ds * [ps] of rf 4) set ds 0])
+    (if elc < de [set elc (elc + de) set mon (mon - de * [pelc] of pp 6) set de 0])]
+
+
+  if [slp] of rf 5 < [ds] of fp 10 [ask min-one-of mss [ps + 0] [set slp (slp - [ds] of fp 10)
+    set mon (mon + [ds] of fp 10 * ps)]]
+  ask rf 5 [if slp < [ds] of fp 10 [set slp (slp + [ds] of fp 10) set mon (mon - [ds] of fp 8 * [ps] of min-one-of mss [ps + 0])]]
+
+  if [slp] of fp 10 < [ds] of fp 10 [ask rf 5 [set slp (slp - [ds] of fp 10) set mon (mon + [ds] of fp 10 * ps)]]
+  if [elc] of fp 10 < [de] of fp 10 [ask pp 6 [set elc (elc - [de] of fp 10) set mon (mon + [de] of fp 10 * pelc)]]
+  ask fp 10 [(if slp < ds [set slp (slp + ds) set mon (mon - ds * [ps] of rf 5) set ds 0])
+    (if elc < de [set elc (elc + de) set mon (mon - de * [pelc] of pp 6) set de 0])]
+  ]
+  [
+    let heatlist sort-on [ph] turtles
+    if [dh] of rf 3 > 0 and [heat] of item 9 heatlist > [dh] of rf 3 [ask item 9 heatlist [set mon (mon + [dh] of rf 3 * ph) set heat (heat - [dh] of rf 3)]
+      ask rf 3 [set mon (mon - dh * [ph] of item 9 heatlist) set heat (heat + dh) set dh 0]]
+    if [dh] of rf 3 > 0 and [heat] of item 9 heatlist < [dh] of rf 3 [ask rf 3 [set mon (mon - [heat] of item 9 heatlist * [ph] of item 9 heatlist)
+      set heat (heat + [heat] of item 9 heatlist)  set dh (dh - [heat] of item 9 heatlist)]
+      ask item 9 heatlist [set mon (mon + heat * ph) set heat 0]]
+    if [dh] of rf 3 > 0 and [heat] of item 10 heatlist > [dh] of rf 3 [ask item 10 heatlist [set mon (mon + [dh] of rf 3 * ph) set heat (heat - [dh] of rf 3)]
+      ask rf 3 [set mon (mon - dh * [ph] of item 10 heatlist) set heat (heat + dh) set dh 0]]
+    if [dh] of rf 3 > 0 and [heat] of item 10 heatlist < [dh] of rf 3 [ask rf 3 [set mon (mon - [heat] of item 10 heatlist * [ph] of item 10 heatlist)
+      set heat (heat + [heat] of item 10 heatlist) set dh (dh - [heat] of item 10 heatlist)]
+      ask item 10 heatlist [set mon (mon + heat * ph) set heat 0]]
+    if [dh] of rf 3 > 0 [ask item 11 heatlist [set mon (mon + [dh] of rf 3 * ph) set heat (heat - [dh] of rf 3)]
+      ask rf 3 [set mon (mon - dh * [ph] of item 11 heatlist) set heat (heat + dh) set dh 0]]
+
+    if [dh] of rf 4 > 0 and [heat] of item 9 heatlist > [dh] of rf 4 [ask item 9 heatlist [set mon (mon + [dh] of rf 4 * ph) set heat (heat - [dh] of rf 4)]
+      ask rf 4 [set mon (mon - dh * [ph] of item 9 heatlist) set heat (heat + dh) set dh 0]]
+    if [dh] of rf 4 > 0 and [heat] of item 9 heatlist < [dh] of rf 4 [ask rf 4 [set mon (mon - [heat] of item 9 heatlist * [ph] of item 9 heatlist)
+      set heat (heat + [heat] of item 9 heatlist)  set dh (dh - [heat] of item 9 heatlist)]
+      ask item 9 heatlist [set mon (mon + heat * ph) set heat 0]]
+    if [dh] of rf 4 > 0 and [heat] of item 10 heatlist > [dh] of rf 4 [ask item 10 heatlist [set mon (mon + [dh] of rf 4 * ph) set heat (heat - [dh] of rf 4)]
+      ask rf 4 [set mon (mon - dh * [ph] of item 10 heatlist) set heat (heat + dh) set dh 0]]
+    if [dh] of rf 4 > 0 and [heat] of item 10 heatlist < [dh] of rf 4 [ask rf 4 [set mon (mon - [heat] of item 10 heatlist * [ph] of item 10 heatlist)
+      set heat (heat + [heat] of item 10 heatlist) set dh (dh - [heat] of item 10 heatlist)]
+      ask item 10 heatlist [set mon (mon + heat * ph) set heat 0]]
+    if [dh] of rf 4 > 0 [ask item 11 heatlist [set mon (mon + [dh] of rf 4 * ph) set heat (heat - [dh] of rf 4)]
+      ask rf 4 [set mon (mon - dh * [ph] of item 11 heatlist) set heat (heat + dh) set dh 0]]
+
+    if [dh] of rf 5 > 0 and [heat] of item 9 heatlist > [dh] of rf 5 [ask item 9 heatlist [set mon (mon + [dh] of rf 5 * ph) set heat (heat - [dh] of rf 5)]
+      ask rf 5 [set mon (mon - dh * [ph] of item 9 heatlist) set heat (heat + dh) set dh 0]]
+    if [dh] of rf 5 > 0 and [heat] of item 9 heatlist < [dh] of rf 5 [ask rf 5 [set mon (mon - [heat] of item 9 heatlist * [ph] of item 9 heatlist)
+      set heat (heat + [heat] of item 9 heatlist)  set dh (dh - [heat] of item 9 heatlist)]
+      ask item 9 heatlist [set mon (mon + heat * ph) set heat 0]]
+    if [dh] of rf 5 > 0 and [heat] of item 10 heatlist > [dh] of rf 5 [ask item 10 heatlist [set mon (mon + [dh] of rf 5 * ph) set heat (heat - [dh] of rf 5)]
+      ask rf 5 [set mon (mon - dh * [ph] of item 10 heatlist) set heat (heat + dh) set dh 0]]
+    if [dh] of rf 5 > 0 and [heat] of item 10 heatlist < [dh] of rf 5 [ask rf 5 [set mon (mon - [heat] of item 10 heatlist * [ph] of item 10 heatlist)
+      set heat (heat + [heat] of item 10 heatlist) set dh (dh - [heat] of item 10 heatlist)]
+      ask item 10 heatlist [set mon (mon + heat * ph) set heat 0]]
+    if [dh] of rf 5 > 0 [ask item 11 heatlist [set mon (mon + [dh] of rf 5 * ph) set heat (heat - [dh] of rf 5)]
+      ask rf 5 [set mon (mon - dh * [ph] of item 11 heatlist) set heat (heat + dh) set dh 0]]
+
+    let electlist sort-on [pelc] turtles
+    if [de] of rf 3 > 0 and [elc] of item 9 electlist > [de] of rf 3 [ask item 9 electlist [set mon (mon + [de] of rf 3 * pelc) set elc (elc - [de] of rf 3)]
+      ask rf 3 [set mon (mon - de * [pelc] of item 9 heatlist) set elc (elc + de) set de 0]]
+    if [de] of rf 3 > 0 and [elc] of item 9 electlist < [de] of rf 3 [ask rf 3 [set mon (mon - [elc] of item 9 electlist * [pelc] of item 9 electlist)
+      set elc (elc + [elc] of item 9 electlist)  set de (de - [elc] of item 9 electlist)]
+      ask item 9 electlist [set mon (mon + elc * pelc) set elc 0]]
+    if [de] of rf 3 > 0 and [elc] of item 10 electlist > [de] of rf 3 [ask item 10 electlist [set mon (mon + [de] of rf 3 * pelc) set elc (elc - [de] of rf 3)]
+      ask rf 3 [set mon (mon - de * [pelc] of item 10 electlist) set elc (elc + de) set de 0]]
+    if [de] of rf 3 > 0 and [elc] of item 10 electlist < [de] of rf 3 [ask rf 3 [set mon (mon - [elc] of item 10 electlist * [pelc] of item 10 electlist)
+      set elc (elc + [elc] of item 10 electlist) set de (de - [elc] of item 10 electlist)]
+      ask item 10 electlist [set mon (mon + elc * pelc) set elc 0]]
+    if [de] of rf 3 > 0 [ask item 11 electlist [set mon (mon + [de] of rf 3 * pelc) set elc (elc - [de] of rf 3)]
+      ask rf 3 [set mon (mon - de * [pelc] of item 11 electlist) set elc (elc + de) set de 0]]
+
+    if [de] of rf 4 > 0 and [elc] of item 9 electlist > [de] of rf 4 [ask item 9 electlist [set mon (mon + [de] of rf 4 * pelc) set elc (elc - [de] of rf 4)]
+      ask rf 4 [set mon (mon - de * [pelc] of item 9 heatlist) set elc (elc + de) set de 0]]
+    if [de] of rf 4 > 0 and [elc] of item 9 electlist < [de] of rf 4 [ask rf 4 [set mon (mon - [elc] of item 9 electlist * [pelc] of item 9 electlist)
+      set elc (elc + [elc] of item 9 electlist)  set de (de - [elc] of item 9 electlist)]
+      ask item 9 electlist [set mon (mon + elc * pelc) set elc 0]]
+    if [de] of rf 4 > 0 and [elc] of item 10 electlist > [de] of rf 4 [ask item 10 electlist [set mon (mon + [de] of rf 4 * pelc) set elc (elc - [de] of rf 3)]
+      ask rf 4 [set mon (mon - de * [pelc] of item 10 electlist) set elc (elc + de) set de 0]]
+    if [de] of rf 4 > 0 and [elc] of item 10 electlist < [de] of rf 4 [ask rf 4 [set mon (mon - [elc] of item 10 electlist * [pelc] of item 10 electlist)
+      set elc (elc + [elc] of item 10 electlist) set de (de - [elc] of item 10 electlist)]
+      ask item 10 electlist [set mon (mon + elc * pelc) set elc 0]]
+    if [de] of rf 4 > 0 [ask item 11 electlist [set mon (mon + [de] of rf 4 * pelc) set elc (elc - [de] of rf 4)]
+      ask rf 4 [set mon (mon - de * [pelc] of item 11 electlist) set elc (elc + de) set de 0]]
+
+    if [de] of rf 5 > 0 and [elc] of item 9 electlist > [de] of rf 5 [ask item 9 electlist [set mon (mon + [de] of rf 5 * pelc) set elc (elc - [de] of rf 5)]
+      ask rf 5 [set mon (mon - de * [pelc] of item 9 heatlist) set elc (elc + de) set de 0]]
+    if [de] of rf 5 > 0 and [elc] of item 9 electlist < [de] of rf 5 [ask rf 5 [set mon (mon - [elc] of item 9 electlist * [pelc] of item 9 electlist)
+      set elc (elc + [elc] of item 9 electlist)  set de (de - [elc] of item 9 electlist)]
+      ask item 9 electlist [set mon (mon + elc * pelc) set elc 0]]
+    if [de] of rf 5 > 0 and [elc] of item 10 electlist > [de] of rf 5 [ask item 10 electlist [set mon (mon + [de] of rf 5 * pelc) set elc (elc - [de] of rf 5)]
+      ask rf 5 [set mon (mon - de * [pelc] of item 10 electlist) set elc (elc + de) set de 0]]
+    if [de] of rf 5 > 0 and [elc] of item 10 electlist < [de] of rf 5 [ask rf 5 [set mon (mon - [elc] of item 10 electlist * [pelc] of item 10 electlist)
+      set elc (elc + [elc] of item 10 electlist) set de (de - [elc] of item 10 electlist)]
+      ask item 10 electlist [set mon (mon + elc * pelc) set elc 0]]
+    if [de] of rf 5 > 0 [ask item 11 electlist [set mon (mon + [de] of rf 5 * pelc) set elc (elc - [de] of rf 5)]
+      ask rf 5 [set mon (mon - de * [pelc] of item 11 electlist) set elc (elc + de) set de 0]]
+
+
+
+    let gaslist sort-on [pg] turtles
+    if [dg] of pp 7 > 0 and [gas] of item 8 gaslist > [dg] of pp 7 [ask item 8 gaslist [set mon (mon + [dg] of pp 7 * pg) set gas (gas - [dg] of pp 7)]
+      ask pp 7 [set mon (mon - dg * [pg] of item 8 gaslist) set gas (gas + dg) set dg 0]]
+    if [dg] of pp 7 > 0 and [gas] of item 8 gaslist < [dg] of pp 7 [ask pp 7 [set mon (mon - [gas] of item 8 gaslist * [pg] of item 8 gaslist)
+      set gas (gas + [gas] of item 8 gaslist) set dg (dg - [gas] of item 8 gaslist)]
+      ask item 8 gaslist [set mon (mon + gas * pg) set gas 0]]
+    if [dg] of pp 7 > 0 and [gas] of item 9 gaslist > [dg] of pp 7 [ask item 9 gaslist [set mon (mon + [dg] of pp 7 * pg) set gas (gas - [dg] of pp 7)]
+      ask pp 7 [set mon (mon - dg * [pg] of item 9 gaslist) set gas (gas + dg) set dg 0]]
+    if [dg] of pp 7 > 0 and [gas] of item 9 gaslist < [dg] of pp 7 [ask pp 7 [set mon (mon - [gas] of item 9 gaslist * [pg] of item 9 gaslist)
+      set gas (gas + [gas] of item 9 gaslist) set dg (dg - [gas] of item 9 gaslist)]
+      ask item 9 gaslist [set mon (mon + gas * pg) set gas 0]]
+    if [dg] of pp 7 > 0 and [gas] of item 10 gaslist > [dg] of pp 7 [ask item 10 gaslist [set mon (mon + [dg] of pp 7 * pg) set gas (gas - [dg] of pp 7)]
+      ask pp 7 [set mon (mon - dg * [pg] of item 10 gaslist) set gas (gas + dg) set dg 0]]
+    if [dg] of pp 7 > 0 and [gas] of item 10 gaslist < [dg] of pp 7 [ask pp 7 [set mon (mon - [gas] of item 10 gaslist * [pg] of item 10 gaslist)
+      set gas (gas + [gas] of item 10 gaslist) set dg (dg - [gas] of item 10 gaslist)]
+      ask item 10 gaslist [set mon (mon + gas * pg) set gas 0]]
+    if [dg] of pp 7 > 0 and [gas] of item 11 gaslist > [dg] of pp 7 [ask item 11 gaslist [set mon (mon + [dg] of pp 7 * pg) set gas (gas - [dg] of pp 7)]
+      ask pp 7 [set mon (mon - dg * [pg] of item 11 gaslist) set gas (gas + dg) set dg 0]]
+    if [dg] of pp 7 > 0 and [gas] of item 11 gaslist < [dg] of pp 7 [ask pp 7 [set mon (mon - [gas] of item 11 gaslist * [pg] of item 11 gaslist)
+      set gas (gas + [gas] of item 11 gaslist) set dg (dg - [gas] of item 11 gaslist)]
+      ask item 11 gaslist [set mon (mon + gas * pg) set gas 0]]
+
+
+    if [dg] of pp 6 > 0 and [gas] of item 8 gaslist > [dg] of pp 6 [ask item 8 gaslist [set mon (mon + [dg] of pp 6 * pg) set gas (gas - [dg] of pp 6)]
+      ask pp 6 [set mon (mon - dg * [pg] of item 8 gaslist) set gas (gas + dg) set dg 0]]
+    if [dg] of pp 6 > 0 and [gas] of item 8 gaslist < [dg] of pp 6 [ask pp 6 [set mon (mon - [gas] of item 8 gaslist * [pg] of item 8 gaslist)
+      set gas (gas + [gas] of item 8 gaslist) set dg (dg - [gas] of item 8 gaslist)]
+      ask item 8 gaslist [set mon (mon + gas * pg) set gas 0]]
+    if [dg] of pp 6 > 0 and [gas] of item 9 gaslist > [dg] of pp 6 [ask item 9 gaslist [set mon (mon + [dg] of pp 6 * pg) set gas (gas - [dg] of pp 6)]
+      ask pp 6 [set mon (mon - dg * [pg] of item 9 gaslist) set gas (gas + dg) set dg 0]]
+    if [dg] of pp 6 > 0 and [gas] of item 9 gaslist < [dg] of pp 6 [ask pp 6 [set mon (mon - [gas] of item 9 gaslist * [pg] of item 9 gaslist)
+      set gas (gas + [gas] of item 9 gaslist) set dg (dg - [gas] of item 9 gaslist)]
+      ask item 9 gaslist [set mon (mon + gas * pg) set gas 0]]
+    if [dg] of pp 6 > 0 and [gas] of item 10 gaslist > [dg] of pp 6 [ask item 10 gaslist [set mon (mon + [dg] of pp 6 * pg) set gas (gas - [dg] of pp 6)]
+      ask pp 6 [set mon (mon - dg * [pg] of item 10 gaslist) set gas (gas + dg) set dg 0]]
+    if [dg] of pp 6 > 0 and [gas] of item 10 gaslist < [dg] of pp 6 [ask pp 6 [set mon (mon - [gas] of item 10 gaslist * [pg] of item 10 gaslist)
+      set gas (gas + [gas] of item 10 gaslist) set dg (dg - [gas] of item 10 gaslist)]
+      ask item 10 gaslist [set mon (mon + gas * pg) set gas 0]]
+    if [dg] of pp 6 > 0 and [gas] of item 11 gaslist > [dg] of pp 6 [ask item 11 gaslist [set mon (mon + [dg] of pp 6 * pg) set gas (gas - [dg] of pp 6)]
+      ask pp 6 [set mon (mon - dg * [pg] of item 11 gaslist) set gas (gas + dg) set dg 0]]
+    if [dg] of pp 6 > 0 and [gas] of item 11 gaslist < [dg] of pp 6 [ask pp 6 [set mon (mon - [gas] of item 11 gaslist * [pg] of item 11 gaslist)
+      set gas (gas + [gas] of item 11 gaslist) set dg (dg - [gas] of item 11 gaslist)]
+      ask item 11 gaslist [set mon (mon + gas * pg) set gas 0]]
+
+
+    let sulplist sort-on [ps] turtles
+    if [ds] of fp 8 > 0 and [slp] of item 8 sulplist > [ds] of fp 8 [ask item 8 sulplist [set mon (mon - [ds] of fp 8 * ps) set slp (slp - [ds] of fp 8)]
+      ask fp 8 [set mon (mon - ds * [ps] of item 8 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 8 > 0 and [slp] of item 8 sulplist < [ds] of fp 8 [ask fp 8 [set mon (mon - [slp] of item 8 sulplist * [ps] of item 8 sulplist)
+      set slp (slp + [slp] of item 8 sulplist) set ds (ds - [slp] of item 8 sulplist)]
+      ask item 8 sulplist [set mon (mon + slp * ps) set slp 0]]
+    if [ds] of fp 8 > 0 and [slp] of item 9 sulplist > [ds] of fp 8 [ask item 9 sulplist [set mon (mon - [ds] of fp 8 * ps) set slp (slp - [ds] of fp 8)]
+      ask fp 8 [set mon (mon - ds * [ps] of item 9 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 8 > 0 and [slp] of item 9 sulplist < [ds] of fp 8 [ask fp 8 [set mon (mon - [slp] of item 9 sulplist * [ps] of item 9 sulplist)
+      set slp (slp + [slp] of item 9 sulplist) set ds (ds - [slp] of item 9 sulplist)]
+      ask item 9 sulplist [set mon (mon + slp * ps) set slp 0]]
+    if [ds] of fp 8 > 0 and [slp] of item 10 sulplist > [ds] of fp 8 [ask item 10 sulplist [set mon (mon - [ds] of fp 8 * ps) set slp (slp - [ds] of fp 8)]
+      ask fp 8 [set mon (mon - ds * [ps] of item 10 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 8 > 0 and [slp] of item 10 sulplist < [ds] of fp 8 [ask fp 8 [set mon (mon - [slp] of item 10 sulplist * [ps] of item 10 sulplist)
+      set slp (slp + [slp] of item 10 sulplist) set ds (ds - [slp] of item 10 sulplist)]
+      ask item 10 sulplist [set mon (mon + slp * ps) set slp 0]]
+    if [ds] of fp 8 > 0 and [slp] of item 11 sulplist > [ds] of fp 8 [ask item 11 sulplist [set mon (mon - [ds] of fp 8 * ps) set slp (slp - [ds] of fp 8)]
+      ask fp 8 [set mon (mon - ds * [ps] of item 11 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 8 > 0 and [slp] of item 11 sulplist < [ds] of fp 8 [ask fp 8 [set mon (mon - [slp] of item 11 sulplist * [ps] of item 11 sulplist)
+      set slp (slp + [slp] of item 11 sulplist) set ds (ds - [slp] of item 11 sulplist)]
+      ask item 11 sulplist [set mon (mon + slp * ps) set slp 0]]
+
+    if [ds] of fp 9 > 0 and [slp] of item 8 sulplist > [ds] of fp 9 [ask item 8 sulplist [set mon (mon - [ds] of fp 9 * ps) set slp (slp - [ds] of fp 9)]
+      ask fp 9 [set mon (mon - ds * [ps] of item 8 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 9 > 0 and [slp] of item 8 sulplist < [ds] of fp 9 [ask fp 9 [set mon (mon - [slp] of item 8 sulplist * [ps] of item 8 sulplist)
+      set slp (slp + [slp] of item 8 sulplist) set ds (ds - [slp] of item 8 sulplist)]
+      ask item 8 sulplist [set mon (mon + slp * ps) set slp 0]]
+    if [ds] of fp 9 > 0 and [slp] of item 9 sulplist > [ds] of fp 9 [ask item 9 sulplist [set mon (mon - [ds] of fp 9 * ps) set slp (slp - [ds] of fp 9)]
+      ask fp 9 [set mon (mon - ds * [ps] of item 9 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 9 > 0 and [slp] of item 9 sulplist < [ds] of fp 9 [ask fp 9 [set mon (mon - [slp] of item 9 sulplist * [ps] of item 9 sulplist)
+      set slp (slp + [slp] of item 9 sulplist) set ds (ds - [slp] of item 9 sulplist)]
+      ask item 9 sulplist [set mon (mon + slp * ps) set slp 0]]
+    if [ds] of fp 9 > 0 and [slp] of item 10 sulplist > [ds] of fp 9 [ask item 10 sulplist [set mon (mon - [ds] of fp 9 * ps) set slp (slp - [ds] of fp 9)]
+      ask fp 9 [set mon (mon - ds * [ps] of item 10 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 9 > 0 and [slp] of item 10 sulplist < [ds] of fp 9 [ask fp 9 [set mon (mon - [slp] of item 10 sulplist * [ps] of item 10 sulplist)
+      set slp (slp + [slp] of item 10 sulplist) set ds (ds - [slp] of item 10 sulplist)]
+      ask item 10 sulplist [set mon (mon + slp * ps) set slp 0]]
+    if [ds] of fp 9 > 0 and [slp] of item 11 sulplist > [ds] of fp 9 [ask item 11 sulplist [set mon (mon - [ds] of fp 9 * ps) set slp (slp - [ds] of fp 9)]
+      ask fp 9 [set mon (mon - ds * [ps] of item 11 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 9 > 0 and [slp] of item 11 sulplist < [ds] of fp 9 [ask fp 9 [set mon (mon - [slp] of item 11 sulplist * [ps] of item 11 sulplist)
+      set slp (slp + [slp] of item 11 sulplist) set ds (ds - [slp] of item 11 sulplist)]
+      ask item 11 sulplist [set mon (mon + slp * ps) set slp 0]]
+
+    if [ds] of fp 10 > 0 and [slp] of item 8 sulplist > [ds] of fp 10 [ask item 8 sulplist [set mon (mon - [ds] of fp 10 * ps) set slp (slp - [ds] of fp 10)]
+      ask fp 10 [set mon (mon - ds * [ps] of item 8 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 10 > 0 and [slp] of item 8 sulplist < [ds] of fp 10 [ask fp 10 [set mon (mon - [slp] of item 8 sulplist * [ps] of item 8 sulplist)
+      set slp (slp + [slp] of item 8 sulplist) set ds (ds - [slp] of item 8 sulplist)]
+      ask item 8 sulplist [set mon (mon + slp * ps) set slp 0]]
+    if [ds] of fp 10 > 0 and [slp] of item 9 sulplist > [ds] of fp 10 [ask item 9 sulplist [set mon (mon - [ds] of fp 10 * ps) set slp (slp - [ds] of fp 10)]
+      ask fp 10 [set mon (mon - ds * [ps] of item 9 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 10 > 0 and [slp] of item 9 sulplist < [ds] of fp 10 [ask fp 10 [set mon (mon - [slp] of item 9 sulplist * [ps] of item 9 sulplist)
+      set slp (slp + [slp] of item 9 sulplist) set ds (ds - [slp] of item 9 sulplist)]
+      ask item 9 sulplist [set mon (mon + slp * ps) set slp 0]]
+    if [ds] of fp 10 > 0 and [slp] of item 10 sulplist > [ds] of fp 10 [ask item 10 sulplist [set mon (mon - [ds] of fp 10 * ps) set slp (slp - [ds] of fp 10)]
+      ask fp 10 [set mon (mon - ds * [ps] of item 10 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 10 > 0 and [slp] of item 10 sulplist < [ds] of fp 10 [ask fp 10 [set mon (mon - [slp] of item 10 sulplist * [ps] of item 10 sulplist)
+      set slp (slp + [slp] of item 10 sulplist) set ds (ds - [slp] of item 10 sulplist)]
+      ask item 10 sulplist [set mon (mon + slp * ps) set slp 0]]
+    if [ds] of fp 10 > 0 and [slp] of item 11 sulplist > [ds] of fp 10 [ask item 11 sulplist [set mon (mon - [ds] of fp 10 * ps) set slp (slp - [ds] of fp 10)]
+      ask fp 10 [set mon (mon - ds * [ps] of item 11 sulplist) set slp (slp + ds) set ds 0]]
+    if [ds] of fp 10 > 0 and [slp] of item 11 sulplist < [ds] of fp 10 [ask fp 10 [set mon (mon - [slp] of item 11 sulplist * [ps] of item 11 sulplist)
+      set slp (slp + [slp] of item 11 sulplist) set ds (ds - [slp] of item 11 sulplist)]
+      ask item 11 sulplist [set mon (mon + slp * ps) set slp 0]]
+  ]
+end
+
+
+to sell-products
+  let rpdlist sort-on [(- pr)] turtles
+  if [dr] of mb 11 > 0 and [rpd] of item 5 rpdlist > [dr] of mb 11 [ask item 5 rpdlist [set rpd (rpd - [dr] of mb 11) set mon (mon + [dr] of mb 11 * pr)]
+    ask mb 11 [set mon (mon - dr * [pr] of item 5 rpdlist) set rpd (rpd + dr) set dr 0]]
+  if [dr] of mb 11 > 0 and [rpd] of item 5 rpdlist < [dr] of mb 11 [ask mb 11 [set mon (mon - [rpd] of item 5 rpdlist * [pr] of item 5 rpdlist)
+    set rpd (rpd + [rpd] of item 5 rpdlist) set dr (dr - [rpd] of item 5 rpdlist)]
+    ask item 5 rpdlist [set mon (mon + rpd * pr) set rpd 0]]
+  if [dr] of mb 11 > 0 and [rpd] of item 4 rpdlist > [dr] of mb 11 [ask item 4 rpdlist [set rpd (rpd - [dr] of mb 11) set mon (mon + [dr] of mb 11 * pr)]
+    ask mb 11 [set mon (mon - dr * [pr] of item 4 rpdlist) set rpd (rpd + dr) set dr 0]]
+  if [dr] of mb 11 > 0 and [rpd] of item 4 rpdlist < [dr] of mb 11 [ask mb 11 [set mon (mon - [rpd] of item 4 rpdlist * [pr] of item 4 rpdlist)
+    set rpd (rpd + [rpd] of item 4 rpdlist) set dr (dr - [rpd] of item 4 rpdlist)]
+      ask item 4 rpdlist [set mon (mon + rpd * pr) set rpd 0]]
+  if [dr] of mb 11 > 0 and [rpd] of item 3 rpdlist > [dr] of mb 11 [ask item 3 rpdlist [set rpd (rpd - [dr] of mb 11) set mon (mon + [dr] of mb 11 * pr)]
+    ask mb 11 [set mon (mon - dr * [pr] of item 3  rpdlist) set rpd (rpd + dr) set dr 0]]
+  if [dr] of mb 11 > 0 and [rpd] of item 3 rpdlist < [dr] of mb 11 [ask mb 11 [set mon (mon - [rpd] of item 3 rpdlist * [pr] of item 3  rpdlist)
+    set rpd (rpd + [rpd] of item 3 rpdlist) set dr (dr - [rpd] of item 3 rpdlist)]
+    ask item 3 rpdlist [set mon (mon + rpd * pr) set rpd 0]]
+  if [dr] of mb 11 > 0 [ask item 2 rpdlist [set rpd (rpd - [dr] of mb 11) set mon (mon + [dr] of mb 11 * pr)]
+    ask mb 11 [set mon (mon - dr * [pr] of item 2  rpdlist) set rpd (rpd + dr) set dr 0]]
+
+  if [dr] of mb 12 > 0 and [rpd] of item 5 rpdlist > [dr] of mb 12 [ask item 5 rpdlist [set rpd (rpd - [dr] of mb 12) set mon (mon + [dr] of mb 12 * pr)]
+    ask mb 12 [set mon (mon - dr * [pr] of item 5 rpdlist) set rpd (rpd + dr) set dr 0]]
+  if [dr] of mb 12 > 0 and [rpd] of item 5 rpdlist < [dr] of mb 12 [ask mb 12 [set mon (mon - [rpd] of item 5 rpdlist * [pr] of item 5 rpdlist)
+    set rpd (rpd + [rpd] of item 5 rpdlist) set dr (dr - [rpd] of item 5 rpdlist)]
+    ask item 5 rpdlist [set mon (mon + rpd * pr) set rpd 0]]
+  if [dr] of mb 12 > 0 and [rpd] of item 4 rpdlist > [dr] of mb 12 [ask item 4 rpdlist [set rpd (rpd - [dr] of mb 12) set mon (mon + [dr] of mb 12 * pr)]
+    ask mb 12 [set mon (mon - dr * [pr] of item 4 rpdlist) set rpd (rpd + dr) set dr 0]]
+  if [dr] of mb 12 > 0 and [rpd] of item 4 rpdlist < [dr] of mb 12 [ask mb 12 [set mon (mon - [rpd] of item 4 rpdlist * [pr] of item 4 rpdlist)
+    set rpd (rpd + [rpd] of item 4 rpdlist) set dr (dr - [rpd] of item 4 rpdlist)]
+    ask item 4 rpdlist [set mon (mon + rpd * pr) set rpd 0]]
+  if [dr] of mb 12 > 0 and [rpd] of item 3 rpdlist > [dr] of mb 12 [ask item 3 rpdlist [set rpd (rpd - [dr] of mb 12) set mon (mon + [dr] of mb 12 * pr)]
+    ask mb 12 [set mon (mon - dr * [pr] of item 3  rpdlist) set rpd (rpd + dr) set dr 0]]
+  if [dr] of mb 12 > 0 and [rpd] of item 3 rpdlist < [dr] of mb 12 [ask mb 12 [set mon (mon - [rpd] of item 3 rpdlist * [pr] of item 3  rpdlist)
+    set rpd (rpd + [rpd] of item 3 rpdlist) set dr (dr - [rpd] of item 3 rpdlist)]
+    ask item 3 rpdlist [set mon (mon + rpd * pr) set rpd 0]]
+  if [dr] of mb 12 > 0 [ask item 2 rpdlist [set rpd (rpd - [dr] of mb 12) set mon (mon + [dr] of mb 12 * pr)]
+    ask mb 12 [set mon (mon - dr * [pr] of item 2  rpdlist) set rpd (rpd + dr) set dr 0]]
+
+  if [dr] of mb 13 > 0 and [rpd] of item 5 rpdlist > [dr] of mb 13 [ask item 5 rpdlist [set rpd (rpd - [dr] of mb 13) set mon (mon + [dr] of mb 13 * pr)]
+    ask mb 13 [set mon (mon - dr * [pr] of item 5 rpdlist) set rpd (rpd + dr) set dr 0]]
+  if [dr] of mb 13 > 0 and [rpd] of item 5 rpdlist < [dr] of mb 13 [ask mb 13 [set mon (mon - [rpd] of item 5 rpdlist * [pr] of item 5 rpdlist)
+    set rpd (rpd + [rpd] of item 5 rpdlist) set dr (dr - [rpd] of item 5 rpdlist)]
+    ask item 5 rpdlist [set mon (mon + rpd * pr) set rpd 0]]
+  if [dr] of mb 13 > 0 and [rpd] of item 4 rpdlist > [dr] of mb 13 [ask item 4 rpdlist [set rpd (rpd - [dr] of mb 13) set mon (mon + [dr] of mb 13 * pr)]
+    ask mb 13 [set mon (mon - dr * [pr] of item 4 rpdlist) set rpd (rpd + dr) set dr 0]]
+  if [dr] of mb 13 > 0 and [rpd] of item 4 rpdlist < [dr] of mb 13 [ask mb 13 [set mon (mon - [rpd] of item 4 rpdlist * [pr] of item 4 rpdlist)
+    set rpd (rpd + [rpd] of item 4 rpdlist) set dr (dr - [rpd] of item 4 rpdlist)]
+    ask item 4 rpdlist [set mon (mon + rpd * pr) set rpd 0]]
+  if [dr] of mb 13 > 0 and [rpd] of item 3 rpdlist > [dr] of mb 13 [ask item 3 rpdlist [set rpd (rpd - [dr] of mb 13) set mon (mon + [dr] of mb 13 * pr)]
+    ask mb 13 [set mon (mon - dr * [pr] of item 3  rpdlist) set rpd (rpd + dr) set dr 0]]
+  if [dr] of mb 13 > 0 and [rpd] of item 3 rpdlist < [dr] of mb 13 [ask mb 13 [set mon (mon - [rpd] of item 3 rpdlist * [pr] of item 3  rpdlist)
+    set rpd (rpd + [rpd] of item 3 rpdlist) set dr (dr - [rpd] of item 3 rpdlist)]
+    ask item 3 rpdlist [set mon (mon + rpd * pr) set rpd 0]]
+  if [dr] of mb 13 > 0 [ask item 2 rpdlist [set rpd (rpd - [dr] of mb 13) set mon (mon + [dr] of mb 13 * pr)]
+    ask mb 13 [set mon (mon - dr * [pr] of item 2  rpdlist) set rpd (rpd + dr) set dr 0]]
+
+
+  let elclist sort-on [(- pelc)] turtles
+  if [de] of mb 11 > 0 and [elc] of item 4 elclist > [de] of mb 11 [ask item 4 elclist [set elc (elc - [de] of mb 11) set mon (mon + [de] of mb 11 * pelc)]
+    ask mb 11 [set mon (mon - de * [pelc] of item 4 elclist) set elc (elc + de) set de 0]]
+  if [de] of mb 11 > 0 and [elc] of item 4 elclist < [de] of mb 11 [ask mb 11 [set mon (mon - [elc] of item 4 elclist * [pelc] of item 4 elclist)
+    set elc (elc + [elc] of item 4 elclist) set de (de - [elc] of item 4 elclist)]
+    ask item 4 elclist [set mon (mon + elc * pelc) set elc 0]]
+  if [de] of mb 11 > 0 and [elc] of item 3 elclist > [de] of mb 11 [ask item 3 elclist [set elc (elc - [de] of mb 11) set mon (mon + [de] of mb 11 * pelc)]
+    ask mb 11 [set mon (mon - de * [pelc] of item 3 elclist) set elc (elc + de) set de 0]]
+  if [de] of mb 11 > 0 and [elc] of item 3 elclist < [de] of mb 11 [ask mb 11 [set mon (mon - [elc] of item 3 elclist * [pelc] of item 3 elclist)
+    set elc (elc + [elc] of item 3 elclist) set de (de - [elc] of item 3 elclist)]
+    ask item 3 elclist [set mon (mon + elc * pelc) set elc 0]]
+  if [de] of mb 11 > 0 [ask item 2 elclist [set elc (elc - [de] of mb 11) set mon (mon + [de] of mb 11 * pelc)]
+    ask mb 11 [set mon (mon - de * [pelc] of item 2  elclist) set elc (elc + de) set de 0]]
+
+  if [de] of mb 12 > 0 and [elc] of item 4 elclist > [de] of mb 12 [ask item 4 elclist [set elc (elc - [de] of mb 12) set mon (mon + [de] of mb 12 * pelc)]
+    ask mb 12 [set mon (mon - de * [pelc] of item 4 elclist) set elc (elc + de) set de 0]]
+  if [de] of mb 12 > 0 and [elc] of item 4 elclist < [de] of mb 12 [ask mb 12 [set mon (mon - [elc] of item 4 elclist * [pelc] of item 4 elclist)
+    set elc (elc + [elc] of item 4 elclist) set de (de - [elc] of item 4 elclist)]
+    ask item 4 elclist [set mon (mon + elc * pelc) set elc 0]]
+  if [de] of mb 12 > 0 and [elc] of item 3 elclist > [de] of mb 12 [ask item 3 elclist [set elc (elc - [de] of mb 12) set mon (mon + [de] of mb 12 * pelc)]
+    ask mb 12 [set mon (mon - de * [pelc] of item 3 elclist) set elc (elc + de) set de 0]]
+  if [de] of mb 12 > 0 and [elc] of item 3 elclist < [de] of mb 12 [ask mb 12 [set mon (mon - [elc] of item 3 elclist * [pelc] of item 3 elclist)
+    set elc (elc + [elc] of item 3 elclist) set de (de - [elc] of item 3 elclist)]
+    ask item 3 elclist [set mon (mon + elc * pelc) set elc 0]]
+  if [de] of mb 12 > 0 [ask item 2 elclist [set elc (elc - [de] of mb 12) set mon (mon + [de] of mb 12 * pelc)]
+    ask mb 12 [set mon (mon - de * [pelc] of item 2  elclist) set elc (elc + de) set de 0]]
+
+  if [de] of mb 13 > 0 and [elc] of item 4 elclist > [de] of mb 13 [ask item 4 elclist [set elc (elc - [de] of mb 13) set mon (mon + [de] of mb 13 * pelc)]
+    ask mb 13 [set mon (mon - de * [pelc] of item 4 elclist) set elc (elc + de) set de 0]]
+  if [de] of mb 13 > 0 and [elc] of item 4 elclist < [de] of mb 13 [ask mb 13 [set mon (mon - [elc] of item 4 elclist * [pelc] of item 4 elclist)
+    set elc (elc + [elc] of item 4 elclist) set de (de - [elc] of item 4 elclist)]
+    ask item 4 elclist [set mon (mon + elc * pelc) set elc 0]]
+  if [de] of mb 13 > 0 and [elc] of item 3 elclist > [de] of mb 13 [ask item 3 elclist [set elc (elc - [de] of mb 13) set mon (mon + [de] of mb 13 * pelc)]
+    ask mb 13 [set mon (mon - de * [pelc] of item 3 elclist) set elc (elc + de) set de 0]]
+  if [de] of mb 13 > 0 and [elc] of item 3 elclist < [de] of mb 13 [ask mb 13 [set mon (mon - [elc] of item 3 elclist * [pelc] of item 3 elclist)
+    set elc (elc + [elc] of item 3 elclist) set de (de - [elc] of item 3 elclist)]
+    ask item 1 elclist [set mon (mon + elc * pelc) set elc 0]]
+  if [de] of mb 13 > 0 [ask item 2 elclist [set elc (elc - [de] of mb 13) set mon (mon + [de] of mb 13 * pelc)]
+    ask mb 13 [set mon (mon - de * [pelc] of item 2  elclist) set elc (elc + de) set de 0]]
+
+
+  let fpdlist sort-on [(- pf)] turtles
+  if [df] of mb 11 > 0 and [fpd] of item 5 fpdlist > [df] of mb 11 [ask item 5 fpdlist [set fpd (fpd - [df] of mb 11) set mon (mon + [df] of mb 11 * pf)]
+    ask mb 11 [set mon (mon - df * [pf] of item 5 fpdlist) set fpd (fpd + df) set df 0]]
+  if [df] of mb 11 > 0 and [fpd] of item 5 fpdlist < [df] of mb 11 [ask mb 11 [set mon (mon - [fpd] of item 5 fpdlist * [pf] of item 5 fpdlist)
+    set fpd (fpd + [fpd] of item 5 fpdlist) set df (df - [fpd] of item 5 fpdlist)]
+    ask item 5 fpdlist [set mon (mon + fpd * pf) set fpd 0]]
+  if [df] of mb 11 > 0 and [fpd] of item 4 fpdlist > [df] of mb 11 [ask item 4 fpdlist [set fpd (fpd - [df] of mb 11) set mon (mon + [df] of mb 11 * pf)]
+    ask mb 11 [set mon (mon - df * [pf] of item 4 fpdlist) set fpd (fpd + df) set df 0]]
+  if [df] of mb 11 > 0 and [fpd] of item 4 fpdlist < [df] of mb 11 [ask mb 11 [set mon (mon - [fpd] of item 4 fpdlist * [pf] of item 4 fpdlist)
+    set fpd (fpd + [fpd] of item 4 fpdlist) set df (df - [fpd] of item 4 fpdlist)] ask item 4 fpdlist [set mon (mon + fpd * pf) set fpd 0]]
+  if [df] of mb 11 > 0 and [fpd] of item 3 fpdlist > [df] of mb 11 [ask item 3 fpdlist [set fpd (fpd - [df] of mb 11) set mon (mon + [df] of mb 11 * pf)]
+    ask mb 11 [set mon (mon - df * [pf] of item 3  fpdlist) set fpd (fpd + df) set df 0]]
+  if [df] of mb 11 > 0 and [fpd] of item 3 fpdlist < [df] of mb 11 [ask mb 11 [set mon (mon - [fpd] of item 3 fpdlist * [pf] of item 3  fpdlist)
+    set fpd (fpd + [fpd] of item 3 fpdlist) set df (df - [fpd] of item 3 fpdlist)] ask item 3 fpdlist [set mon (mon + fpd * pf) set fpd 0]]
+  if [df] of mb 11 > 0 [ask item 2 fpdlist [set fpd (fpd - [df] of mb 11) set mon (mon + [df] of mb 11 * pf)]
+    ask mb 11 [set mon (mon - df * [pf] of item 2  fpdlist) set fpd (fpd + df) set df 0]]
+
+  if [df] of mb 12 > 0 and [fpd] of item 5 fpdlist > [df] of mb 12 [ask item 5 fpdlist [set fpd (fpd - [df] of mb 12) set mon (mon + [df] of mb 12 * pf)]
+    ask mb 12 [set mon (mon - df * [pf] of item 5 fpdlist) set fpd (fpd + df) set df 0]]
+  if [df] of mb 12 > 0 and [fpd] of item 5 fpdlist < [df] of mb 12 [ask mb 12 [set mon (mon - [fpd] of item 5 fpdlist * [pf] of item 5 fpdlist)
+    set fpd (fpd + [fpd] of item 5 fpdlist) set df (df - [fpd] of item 5 fpdlist)]
+    ask item 5 fpdlist [set mon (mon + fpd * pf) set fpd 0]]
+  if [df] of mb 12 > 0 and [fpd] of item 4 fpdlist > [df] of mb 12 [ask item 4 fpdlist [set fpd (fpd - [df] of mb 12) set mon (mon + [df] of mb 12 * pf)]
+    ask mb 12 [set mon (mon - df * [pf] of item 4 fpdlist) set fpd (fpd + df) set df 0]]
+  if [df] of mb 12 > 0 and [fpd] of item 4 fpdlist < [df] of mb 12 [ask mb 12 [set mon (mon - [fpd] of item 4 fpdlist * [pf] of item 4 fpdlist)
+    set fpd (fpd + [fpd] of item 4 fpdlist) set df (df - [fpd] of item 4 fpdlist)]
+    ask item 4 fpdlist [set mon (mon + fpd * pf) set fpd 0]]
+  if [df] of mb 12 > 0 and [fpd] of item 3 fpdlist > [df] of mb 12 [ask item 3 fpdlist [set fpd (fpd - [df] of mb 12) set mon (mon + [df] of mb 12 * pf)]
+    ask mb 12 [set mon (mon - df * [pf] of item 3  fpdlist) set fpd (fpd + df) set df 0]]
+  if [df] of mb 12 > 0 and [fpd] of item 3 fpdlist < [df] of mb 12 [ask mb 12 [set mon (mon - [fpd] of item 3 fpdlist * [pf] of item 3  fpdlist)
+    set fpd (fpd + [fpd] of item 3 fpdlist) set df (df - [fpd] of item 3 fpdlist)] ask item 3 fpdlist [set mon (mon + fpd * pf) set fpd 0]]
+  if [df] of mb 12 > 0 [ask item 2 fpdlist [set fpd (fpd - [df] of mb 12) set mon (mon + [df] of mb 12 * pf)]
+    ask mb 12 [set mon (mon - df * [pf] of item 2  fpdlist) set fpd (fpd + df) set df 0]]
+
+  if [df] of mb 13 > 0 and [fpd] of item 5 fpdlist > [df] of mb 13 [ask item 5 fpdlist [set fpd (fpd - [df] of mb 13) set mon (mon + [df] of mb 13 * pf)]
+    ask mb 13 [set mon (mon - df * [pf] of item 5 fpdlist) set fpd (fpd + df) set df 0]]
+  if [df] of mb 13 > 0 and [fpd] of item 5 fpdlist < [df] of mb 13 [ask mb 13 [set mon (mon - [fpd] of item 5 fpdlist * [pf] of item 5 fpdlist)
+    set fpd (fpd + [fpd] of item 5 fpdlist) set df (df - [fpd] of item 5 fpdlist)]
+    ask item 5 fpdlist [set mon (mon + fpd * pf) set fpd 0]]
+  if [df] of mb 13 > 0 and [fpd] of item 4 fpdlist > [df] of mb 13 [ask item 4 fpdlist [set fpd (fpd - [df] of mb 13) set mon (mon + [df] of mb 13 * pf)]
+    ask mb 13 [set mon (mon - df * [pf] of item 4 fpdlist) set fpd (fpd + df) set df 0]]
+  if [df] of mb 13 > 0 and [fpd] of item 4 fpdlist < [df] of mb 13 [ask mb 13 [set mon (mon - [fpd] of item 4 fpdlist * [pf] of item 4 fpdlist)
+    set fpd (fpd + [fpd] of item 4 fpdlist) set df (df - [fpd] of item 4 fpdlist)]
+    ask item 4 fpdlist [set mon (mon + fpd * pf) set fpd 0]]
+  if [df] of mb 13 > 0 and [fpd] of item 3 fpdlist > [df] of mb 13 [ask item 3 fpdlist [set fpd (fpd - [df] of mb 13) set mon (mon + [df] of mb 13 * pf)]
+    ask mb 13 [set mon (mon - df * [pf] of item 3  fpdlist) set fpd (fpd + df) set df 0]]
+  if [df] of mb 13 > 0 and [fpd] of item 3 fpdlist < [df] of mb 13 [ask mb 13 [set mon (mon - [fpd] of item 3 fpdlist * [pf] of item 3  fpdlist)
+    set fpd (fpd + [fpd] of item 3 fpdlist) set df (df - [fpd] of item 3 fpdlist)]
+    ask item 3 fpdlist [set mon (mon + fpd * pf) set fpd 0]]
+  if [df] of mb 13 > 0 [ask item 2 fpdlist [set fpd (fpd - [df] of mb 13) set mon (mon + [df] of mb 13 * pf)]
+    ask mb 13 [set mon (mon - df * [pf] of item 2  fpdlist) set fpd (fpd + df) set df 0]]
+
+
+  let slplist sort-on [(- ps)] turtles
+  if [ds] of mb 11 > 0 and [slp] of item 5 slplist > [ds] of mb 11 [ask item 5 slplist [set slp (slp - [ds] of mb 11) set mon (mon + [ds] of mb 11 * ps)]
+    ask mb 11 [set mon (mon - ds * [ps] of item 5 slplist) set slp (slp + ds) set ds 0]]
+  if [ds] of mb 11 > 0 and [slp] of item 5 slplist < [ds] of mb 11 [ask mb 11 [set mon (mon - [slp] of item 5 slplist * [ps] of item 5 slplist)
+    set slp (slp + [slp] of item 5 slplist) set ds (ds - [slp] of item 5 slplist)]
+    ask item 5 slplist [set mon (mon + slp * ps) set slp 0]]
+  if [ds] of mb 11 > 0 and [slp] of item 4 slplist > [ds] of mb 11 [ask item 4 slplist [set slp (slp - [ds] of mb 11) set mon (mon + [ds] of mb 11 * ps)]
+    ask mb 11 [set mon (mon - ds * [ps] of item 4 slplist) set slp (slp + ds) set ds 0]]
+  if [ds] of mb 11 > 0 and [slp] of item 4 slplist < [ds] of mb 11 [ask mb 11 [set mon (mon - [slp] of item 4 slplist * [ps] of item 4 slplist)
+    set slp (slp + [slp] of item 4 slplist) set ds (ds - [slp] of item 4 slplist)]
+    ask item 4 slplist [set mon (mon + slp * ps) set slp 0]]
+  if [ds] of mb 11 > 0 and [slp] of item 3 slplist > [ds] of mb 11 [ask item 3 slplist [set slp (slp - [ds] of mb 11) set mon (mon + [ds] of mb 11 * ps)]
+    ask mb 11 [set mon (mon - ds * [ps] of item 3  slplist) set slp (slp + ds) set ds 0]]
+  if [ds] of mb 11 > 0 and [slp] of item 3 slplist < [ds] of mb 11 [ask mb 11 [set mon (mon - [slp] of item 3 slplist * [ps] of item 3  slplist)
+    set slp (slp + [slp] of item 3 slplist) set ds (ds - [slp] of item 3 slplist)] ask item 3 slplist [set mon (mon + slp * ps) set slp 0]]
+  if [ds] of mb 11 > 0 [ask item 2 slplist [set slp (slp - [ds] of mb 11) set mon (mon + [ds] of mb 11 * ps)]
+    ask mb 11 [set mon (mon - ds * [ps] of item 2  slplist) set slp (slp + ds) set ds 0]]
+
+  if [ds] of mb 12 > 0 and [slp] of item 5 slplist > [ds] of mb 12 [ask item 5 slplist [set slp (slp - [ds] of mb 12) set mon (mon + [ds] of mb 12 * ps)]
+    ask mb 12 [set mon (mon - ds * [ps] of item 5 slplist) set slp (slp + ds) set ds 0]]
+  if [ds] of mb 12 > 0 and [slp] of item 5 slplist < [ds] of mb 12 [ask mb 12 [set mon (mon - [slp] of item 5 slplist * [ps] of item 5 slplist)
+    set slp (slp + [slp] of item 5 slplist) set ds (ds - [slp] of item 5 slplist)]
+    ask item 5 slplist [set mon (mon + slp * ps) set slp 0]]
+  if [ds] of mb 12 > 0 and [slp] of item 4 slplist > [ds] of mb 12 [ask item 4 slplist [set slp (slp - [ds] of mb 12) set mon (mon + [ds] of mb 12 * ps)]
+    ask mb 12 [set mon (mon - ds * [ps] of item 4 slplist) set slp (slp + ds) set ds 0]]
+  if [ds] of mb 12 > 0 and [slp] of item 4 slplist < [ds] of mb 12 [ask mb 12 [set mon (mon - [slp] of item 4 slplist * [ps] of item 4 slplist)
+    set slp (slp + [slp] of item 4 slplist) set ds (ds - [slp] of item 4 slplist)]
+    ask item 4 slplist [set mon (mon + slp * ps) set slp 0]]
+  if [ds] of mb 12 > 0 and [slp] of item 3 slplist > [ds] of mb 12 [ask item 3 slplist [set slp (slp - [ds] of mb 12) set mon (mon + [ds] of mb 12 * ps)]
+    ask mb 12 [set mon (mon - ds * [ps] of item 3  slplist) set slp (slp + ds) set ds 0]]
+  if [ds] of mb 12 > 0 and [slp] of item 3 slplist < [ds] of mb 12 [ask mb 12 [set mon (mon - [slp] of item 3 slplist * [ps] of item 3  slplist)
+    set slp (slp + [slp] of item 3 slplist) set ds (ds - [slp] of item 3 slplist)]
+    ask item 3 slplist [set mon (mon + slp * ps) set slp 0]]
+  if [ds] of mb 12 > 0 [ask item 2 slplist [set slp (slp - [ds] of mb 12) set mon (mon + [ds] of mb 12 * ps)]
+    ask mb 12 [set mon (mon - ds * [ps] of item 2  slplist) set slp (slp + ds) set ds 0]]
+
+  if [ds] of mb 13 > 0 and [slp] of item 5 slplist > [ds] of mb 13 [ask item 5 slplist [set slp (slp - [ds] of mb 13) set mon (mon + [ds] of mb 13 * ps)]
+    ask mb 13 [set mon (mon - ds * [ps] of item 5 slplist) set slp (slp + ds) set ds 0]]
+  if [ds] of mb 13 > 0 and [slp] of item 5 slplist < [ds] of mb 13 [ask mb 13 [set mon (mon - [slp] of item 5 slplist * [ps] of item 5 slplist)
+    set slp (slp + [slp] of item 5 slplist) set ds (ds - [slp] of item 5 slplist)]
+    ask item 5 slplist [set mon (mon + slp * ps) set slp 0]]
+  if [ds] of mb 13 > 0 and [slp] of item 4 slplist > [ds] of mb 13 [ask item 4 slplist [set slp (slp - [ds] of mb 13) set mon (mon + [ds] of mb 13 * ps)]
+    ask mb 13 [set mon (mon - ds * [ps] of item 4 slplist) set slp (slp + ds) set ds 0]]
+  if [ds] of mb 13 > 0 and [slp] of item 4 slplist < [ds] of mb 13 [ask mb 13 [set mon (mon - [slp] of item 4 slplist * [ps] of item 4 slplist)
+    set slp (slp + [slp] of item 4 slplist) set ds (ds - [slp] of item 4 slplist)]                                                                                   ; all products are bought by buyers based on least seller price
+    ask item 4 slplist [set mon (mon + slp * ps) set slp 0]]                                                                                                         ; industrial agents tend to fix lower prices than the market selling agents
+  if [ds] of mb 13 > 0 and [slp] of item 3 slplist > [ds] of mb 13 [ask item 3 slplist [set slp (slp - [ds] of mb 13) set mon (mon + [ds] of mb 13 * ps)]
+    ask mb 13 [set mon (mon - ds * [ps] of item 3  slplist) set slp (slp + ds) set ds 0]]
+  if [ds] of mb 13 > 0 and [slp] of item 3 slplist < [ds] of mb 13 [ask mb 13 [set mon (mon - [slp] of item 3 slplist * [ps] of item 3  slplist)
+    set slp (slp + [slp] of item 3 slplist) set ds (ds - [slp] of item 3 slplist)]
+    ask item 3 slplist [set mon (mon + slp * ps) set slp 0]]
+  if [ds] of mb 13 > 0 [ask item 2 slplist [set slp (slp - [ds] of mb 13) set mon (mon + [ds] of mb 13 * ps)]
+    ask mb 13 [set mon (mon - ds * [ps] of item 2  slplist) set slp (slp + ds) set ds 0]]
+
+
+  let gaslist sort-on [(- pg)] turtles
+  if [dg] of mb 11 > 0 and [gas] of item 5 gaslist > [dg] of mb 11 [ask item 5 gaslist [set gas (gas - [dg] of mb 11) set mon (mon + [dg] of mb 11 * pg)]
+    ask mb 11 [set mon (mon - dg * [pg] of item 5 gaslist) set gas (gas + dg) set dg 0]]
+  if [dg] of mb 11 > 0 and [gas] of item 5 gaslist < [dg] of mb 11 [ask mb 11 [set mon (mon - [gas] of item 5 gaslist * [pg] of item 5 gaslist)
+    set gas (gas + [gas] of item 5 gaslist) set dg (dg - [gas] of item 5 gaslist)]
+    ask item 5 gaslist [set mon (mon + gas * pg) set gas 0]]
+  if [dg] of mb 11 > 0 and [gas] of item 4 gaslist > [dg] of mb 11 [ask item 4 gaslist [set gas (gas - [dg] of mb 11) set mon (mon + [dg] of mb 11 * pg)]
+    ask mb 11 [set mon (mon - dg * [pg] of item 4 gaslist) set gas (gas + dg) set dg 0]]
+  if [dg] of mb 11 > 0 and [gas] of item 4 gaslist < [dg] of mb 11 [ask mb 11 [set mon (mon - [gas] of item 4 gaslist * [pg] of item 4 gaslist)
+    set gas (gas + [gas] of item 4 gaslist) set dg (dg - [gas] of item 4 gaslist)]
+    ask item 4 gaslist [set mon (mon + gas * pg) set gas 0]]
+  if [dg] of mb 11 > 0 and [gas] of item 3 gaslist > [dg] of mb 11 [ask item 3 gaslist [set gas (gas - [dg] of mb 11) set mon (mon + [dg] of mb 11 * pg)]
+    ask mb 11 [set mon (mon - dg * [pg] of item 3  gaslist) set gas (gas + dg) set dg 0]]
+  if [dg] of mb 11 > 0 and [gas] of item 3 gaslist < [dg] of mb 11 [ask mb 11 [set mon (mon - [gas] of item 3 gaslist * [pg] of item 3  gaslist)
+    set gas (gas + [gas] of item 3 gaslist) set dg (dg - [gas] of item 3 gaslist)]
+    ask item 3 gaslist [set mon (mon + gas * pg) set gas 0]]
+  if [dg] of mb 11 > 0 [ask item 2 gaslist [set gas (gas - [dg] of mb 11) set mon (mon + [dg] of mb 11 * pg)]
+    ask mb 11 [set mon (mon - dg * [pg] of item 2  gaslist) set gas (gas + dg) set dg 0]]
+
+  if [dg] of mb 12 > 0 and [gas] of item 5 gaslist > [dg] of mb 12 [ask item 5 gaslist [set gas (gas - [dg] of mb 12) set mon (mon + [dg] of mb 12 * pg)]
+    ask mb 12 [set mon (mon - dg * [pg] of item 5 gaslist) set gas (gas + dg) set dg 0]]
+  if [dg] of mb 12 > 0 and [gas] of item 5 gaslist < [dg] of mb 12 [ask mb 12 [set mon (mon - [gas] of item 5 gaslist * [pg] of item 5 gaslist)
+    set gas (gas + [gas] of item 5 gaslist) set dg (dg - [gas] of item 5 gaslist)]
+    ask item 5 gaslist [set mon (mon + gas * pg) set gas 0]]
+  if [dg] of mb 12 > 0 and [gas] of item 4 gaslist > [dg] of mb 12 [ask item 4 gaslist [set gas (gas - [dg] of mb 12) set mon (mon + [dg] of mb 12 * pg)]
+    ask mb 12 [set mon (mon - dg * [pg] of item 4 gaslist) set gas (gas + dg) set dg 0]]
+  if [dg] of mb 12 > 0 and [gas] of item 4 gaslist < [dg] of mb 12 [ask mb 12 [set mon (mon - [gas] of item 4 gaslist * [pg] of item 4 gaslist)
+    set gas (gas + [gas] of item 4 gaslist) set dg (dg - [gas] of item 4 gaslist)]
+    ask item 4 gaslist [set mon (mon + gas * pg) set gas 0]]
+  if [dg] of mb 12 > 0 and [gas] of item 3 gaslist > [dg] of mb 12 [ask item 3 gaslist [set gas (gas - [dg] of mb 12) set mon (mon + [dg] of mb 12 * pg)]
+    ask mb 12 [set mon (mon - dg * [pg] of item 3  gaslist) set gas (gas + dg) set dg 0]]
+  if [dg] of mb 12 > 0 and [gas] of item 3 gaslist < [dg] of mb 12 [ask mb 12 [set mon (mon - [gas] of item 3 gaslist * [pg] of item 3  gaslist)
+    set gas (gas + [gas] of item 3 gaslist) set dg (dg - [gas] of item 3 gaslist)]
+    ask item 3 gaslist [set mon (mon + gas * pg) set gas 0]]
+  if [dg] of mb 12 > 0 [ask item 2 gaslist [set gas (gas - [dg] of mb 12) set mon (mon + [dg] of mb 12 * pg)]
+    ask mb 12 [set mon (mon - dg * [pg] of item 2  gaslist) set gas (gas + dg) set dg 0]]
+
+  if [dg] of mb 13 > 0 and [gas] of item 5 gaslist > [dg] of mb 13 [ask item 5 gaslist [set gas (gas - [dg] of mb 13) set mon (mon + [dg] of mb 13 * pg)]
+    ask mb 13 [set mon (mon - dg * [pg] of item 5 gaslist) set gas (gas + dg) set dg 0]]
+  if [dg] of mb 13 > 0 and [gas] of item 5 gaslist < [dg] of mb 13 [ask mb 13 [set mon (mon - [gas] of item 5 gaslist * [pg] of item 5 gaslist)
+    set gas (gas + [gas] of item 5 gaslist) set dg (dg - [gas] of item 5 gaslist)]
+    ask item 5 gaslist [set mon (mon + gas * pg) set gas 0]]
+  if [dg] of mb 13 > 0 and [gas] of item 4 gaslist > [dg] of mb 13 [ask item 4 gaslist [set gas (gas - [dg] of mb 13) set mon (mon + [dg] of mb 13 * pg)]
+    ask mb 13 [set mon (mon - dg * [pg] of item 4 gaslist) set gas (gas + dg) set dg 0]]
+  if [dg] of mb 13 > 0 and [gas] of item 4 gaslist < [dg] of mb 13 [ask mb 13 [set mon (mon - [gas] of item 4 gaslist * [pg] of item 4 gaslist)
+    set gas (gas + [gas] of item 4 gaslist) set dg (dg - [gas] of item 4 gaslist)]
+    ask item 4 gaslist [set mon (mon + gas * pg) set gas 0]]
+  if [dg] of mb 13 > 0 and [gas] of item 3 gaslist > [dg] of mb 13 [ask item 3 gaslist [set gas (gas - [dg] of mb 13) set mon (mon + [dg] of mb 13 * pg)]
+    ask mb 13 [set mon (mon - dg * [pg] of item 3  gaslist) set gas (gas + dg) set dg 0]]
+  if [dg] of mb 13 > 0 and [gas] of item 3 gaslist < [dg] of mb 13 [ask mb 13 [set mon (mon - [gas] of item 3 gaslist * [pg] of item 3  gaslist)
+    set gas (gas + [gas] of item 3 gaslist) set dg (dg - [gas] of item 3 gaslist)]
+    ask item 3 gaslist [set mon (mon + gas * pg) set gas 0]]
+  if [dg] of mb 13 > 0 [ask item 2 gaslist [set gas (gas - [dg] of mb 13) set mon (mon + [dg] of mb 13 * pg)]
+    ask mb 13 [set mon (mon - dg * [pg] of item 2  gaslist) set gas (gas + dg) set dg 0]]
+
+
+  let heatlist sort-on [(- ph)] turtles
+  if [dh] of mb 11 > 0 and [heat] of item 4 heatlist > [dh] of mb 11 [ask item 4 heatlist [set heat (heat - [dh] of mb 11) set mon (mon + [dh] of mb 11 * ph)]
+    ask mb 11 [set mon (mon - dh * [ph] of item 4 heatlist) set heat (heat + dh) set dh 0]]
+  if [dh] of mb 11 > 0 and [heat] of item 4 heatlist < [dh] of mb 11 [ask mb 11 [set mon (mon - [heat] of item 4 heatlist * [ph] of item 4 heatlist)
+    set heat (heat + [heat] of item 4 heatlist) set dh (dh - [heat] of item 4 heatlist)]
+    ask item 4 heatlist [set mon (mon + heat * ph) set heat 0]]
+  if [dh] of mb 11 > 0 and [heat] of item 3 heatlist > [dh] of mb 11 [ask item 3 heatlist [set heat (heat - [dh] of mb 11) set mon (mon + [dh] of mb 11 * ph)]
+    ask mb 11 [set mon (mon - dh * [ph] of item 3 heatlist) set heat (heat + dh) set dh 0]]
+  if [dh] of mb 11 > 0 and [heat] of item 3 heatlist < [dh] of mb 11 [ask mb 11 [set mon (mon - [heat] of item 3 heatlist * [ph] of item 3 heatlist)
+    set heat (heat + [heat] of item 3 heatlist) set dh (dh - [heat] of item 3 heatlist)]
+    ask item 3 heatlist [set mon (mon + heat * ph) set heat 0]]
+  if [dh] of mb 11 > 0 [ask item 2 heatlist [set heat (heat - [dh] of mb 11) set mon (mon + [dh] of mb 11 * ph)]
+    ask mb 11 [set mon (mon - dh * [ph] of item 2  heatlist) set heat (heat + dh) set dh 0]]
+
+  if [dh] of mb 12 > 0 and [heat] of item 4 heatlist > [dh] of mb 12 [ask item 4 heatlist [set heat (heat - [dh] of mb 12) set mon (mon + [dh] of mb 12 * ph)]
+    ask mb 12 [set mon (mon - dh * [ph] of item 4 heatlist) set heat (heat + dh) set dh 0]]
+  if [dh] of mb 12 > 0 and [heat] of item 4 heatlist < [dh] of mb 12 [ask mb 12 [set mon (mon - [heat] of item 4 heatlist * [ph] of item 4 heatlist)
+    set heat (heat + [heat] of item 4 heatlist) set dh (dh - [heat] of item 4 heatlist)]
+    ask item 4 heatlist [set mon (mon + heat * ph) set heat 0]]
+  if [dh] of mb 12 > 0 and [heat] of item 3 heatlist > [dh] of mb 12 [ask item 3 heatlist [set heat (heat - [dh] of mb 12) set mon (mon + [dh] of mb 12 * ph)]
+    ask mb 12 [set mon (mon - dh * [ph] of item 3 heatlist) set heat (heat + dh) set dh 0]]
+  if [dh] of mb 12 > 0 and [heat] of item 3 heatlist < [dh] of mb 12 [ask mb 12 [set mon (mon - [heat] of item 3 heatlist * [ph] of item 3 heatlist)
+    set heat (heat + [heat] of item 3 heatlist) set dh (dh - [heat] of item 3 heatlist)] ask item 3 heatlist [set mon (mon + heat * ph) set heat 0]]
+  if [dh] of mb 12 > 0 [ask item 2 heatlist [set heat (heat - [dh] of mb 12) set mon (mon + [dh] of mb 12 * ph)]
+    ask mb 12 [set mon (mon - dh * [ph] of item 2  heatlist) set heat (heat + dh) set dh 0]]
+
+  if [dh] of mb 13 > 0 and [heat] of item 4 heatlist > [dh] of mb 13 [ask item 4 heatlist [set heat (heat - [dh] of mb 13) set mon (mon + [dh] of mb 13 * ph)]
+    ask mb 13 [set mon (mon - dh * [ph] of item 4 heatlist) set heat (heat + dh) set dh 0]]
+  if [dh] of mb 13 > 0 and [heat] of item 4 heatlist < [dh] of mb 13 [ask mb 13 [set mon (mon - [heat] of item 4 heatlist * [ph] of item 4 heatlist)
+    set heat (heat + [heat] of item 4 heatlist) set dh (dh - [heat] of item 4 heatlist)]
+    ask item 4 heatlist [set mon (mon + heat * ph) set heat 0]]
+  if [dh] of mb 13 > 0 and [heat] of item 3 heatlist > [dh] of mb 13 [ask item 3 heatlist [set heat (heat - [dh] of mb 13) set mon (mon + [dh] of mb 13 * ph)]
+    ask mb 13 [set mon (mon - dh * [ph] of item 3 heatlist) set heat (heat + dh) set dh 0]]
+  if [dh] of mb 13 > 0 and [heat] of item 3 heatlist < [dh] of mb 13 [ask mb 13 [set mon (mon - [heat] of item 3 heatlist * [ph] of item 3 heatlist)
+    set heat (heat + [heat] of item 3 heatlist) set dh (dh - [heat] of item 3 heatlist)]
+    ask item 3 heatlist [set mon (mon + heat * ph) set heat 0]]
+  if [dh] of mb 13 > 0 [ask item 2 heatlist [set heat (heat - [dh] of mb 13) set mon (mon + [dh] of mb 13 * ph)]
+    ask mb 13 [set mon (mon - dh * [ph] of item 2  heatlist) set heat (heat + dh) set dh 0]]
+end
+
+to pay-fines
+  ask rfs [(if slp > 0 [set mon (mon - (slp * cost-per-unit-sulp-disch * ps)) set slp 0]) (if heat > 0 [
+    set mon (mon - (heat * cost-per-unit-heat * (([ph] of pp 6 + [ph] of pp 7) / 2))) set heat 0]) (if gas > 0 [set mon (mon - (gas * cost-per-unit-gas-disch * pg)) set gas 0])]
+  ask pps [(if heat > 0 [set mon (mon - heat * cost-per-unit-heat * (([ph] of pp 6 + [ph] of pp 7) / 2)) set heat 0])]                                                                  ; industrial agents pay fixed fines for wastes released into the environment
+  ask fps [if eff > 0 [set mon (mon - eff * cost-per-unit-eff ) set eff 0]]
+end
+
+
+to display-labels
+  ask turtles [set label "" set label-color white]                                      ; setting for available cash amount displayed to the nearest whole number
+  ask turtles [set label round mon]
+end
+
+
+to setup-breeds
+  create-mss 3 [
+    set shape "person"
+    set color black
+    set size 5
+    set mon 1e12
+    set elc 1e9
+    set crd 1e18
+    set npk 1e18
+    set gas 1e18
+    set heat 1e18
+    set gas 1e18
+    set wtr 1e18
+    set fpd 1e18
+    set rpd 1e18
+  ]
+  ask turtle 0 [setxy -20 20]
+  ask turtle 1 [setxy -20 0]
+  ask turtle 2 [setxy -20 -20]
+
+  create-rfs 3 [
+    set shape "factory"
+    set color blue
+    set size 7
+    set mon 0
+    set elc 0
+    set crd 0
+    set gas 0
+    set heat 0
+    set slp 0
+    set rpd 0
+  ]
+  ask turtle 3 [setxy -5 20]
+  ask turtle 4 [setxy -5 0]
+  ask turtle 5 [setxy -5 -20]
+
+  create-pps 2 [
+    set shape "factory"
+    set color green
+    set size 7
+    set mon 0
+    set elc 0
+    set gas 0
+    set heat 0
+    set wtr 0
+  ]
+  ask turtle 6 [setxy 5 10]
+  ask turtle 7 [setxy 5 -10]
+
+  create-fps 3 [
+    set shape "factory"
+    set color red
+    set size 7
+    set mon 0
+    set elc 0
+    set npk 0
+    set slp 0
+    set fpd 0
+  ]
+  ask turtle 8 [setxy 15 20]
+  ask turtle 9 [setxy 15 0]
+  ask turtle 10 [setxy 15 -20]
+
+  create-mbs 3 [
+    set shape "person"
+    set color orange
+    set size 5
+    set mon 1e18
+    set elc 0
+    set crd 0
+    set npk 0
+    set gas 0
+    set heat 0
+    set slp 0
+    set wtr 0
+    set fpd 0
+    set rpd 0
+  ]
+  ask turtle 11 [setxy 30 20]
+  ask turtle 12 [setxy 30 0]
+  ask turtle 13 [setxy 30 -20]
+end
